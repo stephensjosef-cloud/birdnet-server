@@ -1,6 +1,5 @@
 FROM python:3.11-slim
 
-# Install system dependencies for audio processing
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
@@ -8,15 +7,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy server code
+# Pre-download the BirdNET model during build so startup is faster
+RUN python -c "from birdnetlib.analyzer import Analyzer; Analyzer()"
+
 COPY server.py .
 
-# Expose the port
 EXPOSE 8080
 
-# Run the server
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "120", "--workers", "1", "server:app"]
