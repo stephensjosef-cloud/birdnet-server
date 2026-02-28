@@ -1,5 +1,6 @@
 flask==3.1.0
 gunicorn==23.0.0
-birdnetlib==0.18.0
-librosa
+numpy<2
 tflite-runtime
+librosa
+birdnetlib==0.18.0
