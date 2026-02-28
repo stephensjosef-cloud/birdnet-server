@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir librosa tensorflow-cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download the BirdNET model during build so startup is faster
