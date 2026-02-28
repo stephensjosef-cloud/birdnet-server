@@ -2,4 +2,4 @@ flask==3.1.0
 gunicorn==23.0.0
 birdnetlib==0.18.0
 librosa
-tensorflow-cpu
+tflite-runtime
