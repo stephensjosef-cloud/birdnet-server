@@ -15,4 +15,4 @@ COPY server.py .
 
 EXPOSE 8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--timeout", "300", "--workers", "1", "--preload", "server:app"]
+CMD gunicorn --bind 0.0.0.0:$PORT --timeout 300 --workers 1 --preload server:app
