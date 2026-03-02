@@ -3,11 +3,11 @@ from birdnetlib import Recording
 from birdnetlib.analyzer import Analyzer
 from datetime import datetime
 import tempfile
+import subprocess
 import os
 
 app = Flask(__name__)
 
-# Load BirdNET analyzer once on startup (takes a few seconds)
 print("Loading BirdNET analyzer...")
 analyzer = Analyzer()
 print("BirdNET analyzer ready!")
@@ -20,32 +20,42 @@ def health():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    # Check if audio file was sent
     if "audio" not in request.files:
         return jsonify({"success": False, "error": "No audio file provided"}), 400
 
     audio_file = request.files["audio"]
 
-    # Optional: latitude and longitude for better regional accuracy
     lat = request.form.get("latitude", None)
     lon = request.form.get("longitude", None)
 
-    # Save uploaded file to a temp location
+    # Save uploaded file
     suffix = os.path.splitext(audio_file.filename)[1] or ".m4a"
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         audio_file.save(tmp.name)
         tmp_path = tmp.name
 
+    # Convert to wav using ffmpeg
+    wav_path = tmp_path.rsplit(".", 1)[0] + ".wav"
     try:
-        # Build recording config
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", tmp_path, "-ar", "48000", "-ac", "1", wav_path],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Audio conversion failed: {str(e)}"}), 500
+
+    if not os.path.exists(wav_path):
+        return jsonify({"success": False, "error": "Audio conversion produced no output"}), 500
+
+    try:
         recording_kwargs = {
             "analyzer": analyzer,
-            "path": tmp_path,
+            "path": wav_path,
             "date": datetime.now(),
-            "min_conf": 0.25,  # Minimum confidence threshold (0.0 - 1.0)
+            "min_conf": 0.25,
         }
 
-        # Add location if provided (improves accuracy)
         if lat and lon:
             try:
                 recording_kwargs["lat"] = float(lat)
@@ -56,7 +66,6 @@ def analyze():
         recording = Recording(**recording_kwargs)
         recording.analyze()
 
-        # Format results
         detections = []
         for d in recording.detections:
             detections.append(
@@ -69,7 +78,6 @@ def analyze():
                 }
             )
 
-        # Sort by confidence (highest first)
         detections.sort(key=lambda x: x["confidence"], reverse=True)
 
         return jsonify({"success": True, "detections": detections})
@@ -78,9 +86,10 @@ def analyze():
         return jsonify({"success": False, "error": str(e)}), 500
 
     finally:
-        # Clean up temp file
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
 
 
 if __name__ == "__main__":
