@@ -28,26 +28,44 @@ def analyze():
     lat = request.form.get("latitude", None)
     lon = request.form.get("longitude", None)
 
-    # Save uploaded file
-    suffix = os.path.splitext(audio_file.filename)[1] or ".m4a"
-    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-        audio_file.save(tmp.name)
-        tmp_path = tmp.name
-
-    # Convert to wav using ffmpeg
-    wav_path = tmp_path.rsplit(".", 1)[0] + ".wav"
+    # The recording is never kept: the upload and the converted file are
+    # deleted in the finally below on every path, including a failed save or
+    # a failed conversion.
+    suffix = os.path.splitext(audio_file.filename or "")[1] or ".m4a"
+    tmp_path = None
+    wav_path = None
     try:
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", tmp_path, "-ar", "48000", "-ac", "1", wav_path],
-            capture_output=True,
-            timeout=30,
-        )
-    except Exception as e:
-        return jsonify({"success": False, "error": f"Audio conversion failed: {str(e)}"}), 500
+        # Save uploaded file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp_path = tmp.name
+            audio_file.save(tmp)
 
-    if not os.path.exists(wav_path):
-        return jsonify({"success": False, "error": "Audio conversion produced no output"}), 500
+        # Convert to wav using ffmpeg
+        wav_path = tmp_path.rsplit(".", 1)[0] + ".wav"
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", tmp_path, "-ar", "48000", "-ac", "1", wav_path],
+                capture_output=True,
+                timeout=30,
+            )
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Audio conversion failed: {str(e)}"}), 500
 
+        if not os.path.exists(wav_path):
+            return jsonify({"success": False, "error": "Audio conversion produced no output"}), 500
+
+        return _analyze_wav(wav_path, lat, lon)
+
+    finally:
+        for path in (tmp_path, wav_path):
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+
+def _analyze_wav(wav_path, lat, lon):
     try:
         recording_kwargs = {
             "analyzer": analyzer,
@@ -84,12 +102,6 @@ def analyze():
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
-
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        if os.path.exists(wav_path):
-            os.remove(wav_path)
 
 
 if __name__ == "__main__":
